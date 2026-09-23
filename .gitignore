@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ROS / build artifacts
+official_roarm_ws/build/
+official_roarm_ws/install/
+official_roarm_ws/log/
+
+# Local generated files
+*.bag
+*.db
+
+official_roarm_ws/
