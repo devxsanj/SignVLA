@@ -1,0 +1,21 @@
+ISL Detector/
+├── config.py                 # Gestures, FPS, sequence length (30 frames), action mapping
+├── simulation/
+│   ├── roarm_m2.xml          # MuJoCo 3D model of RoArm-M2 Pro (4-DOF + 2-finger gripper)
+│   └── arm_sim.py            # Kinematic action routines (wave, nod, shake, pick, place)
+├── data/
+│   ├── raw_videos/           # Saved MP4 clips (<gesture>/sample_XXX.mp4)
+│   ├── landmarks/            # Extracted normalized landmarks (<gesture>/sample_XXX.npy)
+│   ├── dataset.npz           # Compiled train/test dataset
+│   └── label_map.json        # Class label indices
+├── models/
+│   └── isl_gesture_model.pth # Trained PyTorch model weights
+└── src/
+    ├── utils.py              # Scale-invariant landmark normalizer & OpenCV HUD overlay
+    ├── recorder.py           # Interactive video & landmark recording studio
+    ├── extract_landmarks.py  # Batch re-extract landmarks from raw video files
+    ├── create_dataset.py     # Compiles .npy files into dataset.npz
+    ├── model.py              # PyTorch Bi-directional GRU sequence model
+    ├── train.py              # Model training script
+    ├── test_realtime.py      # Real-time webcam testing with debounce
+    └── gesture_to_sim.py     # Direct Bridge: Webcam Gestures -> 3D MuJoCo RoArm
