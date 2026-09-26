@@ -5,7 +5,15 @@
     "no": 2,
     "pick": 3,
     "place": 4,
-    "yes": 5
+    "yes": 5,
+    "up": 6,
+    "down": 7,
+    "left": 8,
+    "right": 9,
+    "front": 10,
+    "back": 11,
+    "open": 12,
+    "close": 13
   },
   "idx_to_label": {
     "0": "hello",
@@ -13,7 +21,15 @@
     "2": "no",
     "3": "pick",
     "4": "place",
-    "5": "yes"
+    "5": "yes",
+    "6": "up",
+    "7": "down",
+    "8": "left",
+    "9": "right",
+    "10": "front",
+    "11": "back",
+    "12": "open",
+    "13": "close"
   },
   "gestures": [
     "hello",
@@ -21,6 +37,14 @@
     "no",
     "pick",
     "place",
-    "yes"
+    "yes",
+    "up",
+    "down",
+    "left",
+    "right",
+    "front",
+    "back",
+    "open",
+    "close"
   ]
 }
