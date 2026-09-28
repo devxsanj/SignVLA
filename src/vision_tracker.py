@@ -1,44 +1,18 @@
-"""
-Real-time ISL Gesture Recognition Tracker
-
-Camera:
-    MediaPipe -> landmark sequence -> trained model
-
-Output:
-    UDP gesture action -> gesture_to_sim.py
-"""
-
 import os
 import sys
 import time
 import socket
 from pathlib import Path
-from collections import deque
-
-
-# ============================================================
-# VENV
-# ============================================================
+from collections import deque, Counter
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
 VENV_PY = PROJECT_ROOT / ".venv" / "bin" / "python"
 
 if not VENV_PY.exists():
     VENV_PY = PROJECT_ROOT / "venv" / "bin" / "python"
 
-
 if VENV_PY.exists() and sys.prefix == sys.base_prefix:
-
-    os.execv(
-        str(VENV_PY),
-        [str(VENV_PY)] + sys.argv
-    )
-
-
-# ============================================================
-# IMPORTS
-# ============================================================
+    os.execv(str(VENV_PY), [str(VENV_PY)] + sys.argv)
 
 import cv2
 import numpy as np
@@ -57,64 +31,44 @@ from src.utils import (
 from src.model import get_model
 
 
-# ============================================================
-# UDP
-# ============================================================
-
 UDP_IP = "127.0.0.1"
 UDP_PORT = 9876
 
+SEQUENCE_LENGTH = 30
 
-# ============================================================
-# TRACKER
-# ============================================================
+# Much less aggressive than the old 0.75
+CONFIDENCE_THRESHOLD = 0.55
+
+# Number of matching predictions required
+STABLE_FRAMES = 3
+
+# Time before same gesture can trigger again
+COOLDOWN = 1.2
+
 
 def run_vision_tracker():
 
-    model_path = (
-        config.MODELS_DIR
-        / "isl_gesture_model.pth"
-    )
-
+    model_path = config.MODELS_DIR / "isl_gesture_model.pth"
 
     if not model_path.exists():
-
-        print(
-            "[ERROR] Model not found:"
-        )
-
-        print(
-            model_path
-        )
-
+        print("[ERROR] Model not found:", model_path)
         return
 
+    # --------------------------------------------------------
+    # MODEL
+    # --------------------------------------------------------
 
-    # ========================================================
-    # LOAD MODEL
-    # ========================================================
-
-    device = torch.device(
-        "cpu"
-    )
+    device = torch.device("cpu")
 
     checkpoint = torch.load(
         str(model_path),
-        map_location=device
+        map_location=device,
+        weights_only=False
     )
 
-    gestures = checkpoint[
-        "gestures"
-    ]
-
-    num_classes = checkpoint[
-        "num_classes"
-    ]
-
-    hidden_dim = checkpoint[
-        "hidden_dim"
-    ]
-
+    gestures = checkpoint["gestures"]
+    num_classes = checkpoint["num_classes"]
+    hidden_dim = checkpoint["hidden_dim"]
 
     model = get_model(
         num_classes=num_classes,
@@ -122,42 +76,35 @@ def run_vision_tracker():
         hidden_dim=hidden_dim
     )
 
-
-    model.load_state_dict(
-        checkpoint[
-            "model_state_dict"
-        ]
-    )
-
+    model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
+    print()
+    print("=" * 60)
+    print("SIGNVLA VISION TRACKER")
+    print("=" * 60)
 
-    print(
-        "\n[VISION] Loaded gestures:"
-    )
+    print("\nLoaded model:")
+    for i, g in enumerate(gestures):
+        print(f"{i:2d} -> {g}")
 
-    print(
-        gestures
-    )
+    print("\nValidation accuracy:",
+          f"{checkpoint.get('val_acc', 0)*100:.2f}%")
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # UDP
-    # ========================================================
+    # --------------------------------------------------------
 
     sock = socket.socket(
         socket.AF_INET,
         socket.SOCK_DGRAM
     )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # CAMERA
-    # ========================================================
+    # --------------------------------------------------------
 
-    cap = cv2.VideoCapture(
-        config.CAMERA_INDEX
-    )
+    cap = cv2.VideoCapture(config.CAMERA_INDEX)
 
     cap.set(
         cv2.CAP_PROP_FRAME_WIDTH,
@@ -169,101 +116,62 @@ def run_vision_tracker():
         config.FRAME_HEIGHT
     )
 
-
     if not cap.isOpened():
-
-        print(
-            "[ERROR] Could not open camera."
-        )
-
-        sock.close()
-
+        print("[ERROR] Could not open camera.")
         return
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # MEDIAPIPE
-    # ========================================================
+    # --------------------------------------------------------
 
     detector = get_hands_detector(
         max_num_hands=config.MAX_NUM_HANDS,
-        min_detection_confidence=(
-            config.MIN_DETECTION_CONFIDENCE
-        ),
-        min_tracking_confidence=(
-            config.MIN_TRACKING_CONFIDENCE
-        )
+        min_detection_confidence=config.MIN_DETECTION_CONFIDENCE,
+        min_tracking_confidence=config.MIN_TRACKING_CONFIDENCE
     )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # BUFFERS
-    # ========================================================
+    # --------------------------------------------------------
 
     feature_buffer = deque(
-        maxlen=config.SEQUENCE_LENGTH
+        maxlen=SEQUENCE_LENGTH
     )
 
-    recent_preds = deque(
-        maxlen=8
+    prediction_buffer = deque(
+        maxlen=STABLE_FRAMES
     )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # STATE
-    # ========================================================
+    # --------------------------------------------------------
 
-    predicted_gesture = "idle"
-
-    predicted_confidence = 0.0
-
-    active_robot_action = "READY"
+    displayed_gesture = "WAITING"
+    displayed_confidence = 0.0
 
     last_triggered_gesture = None
+    cooldown_until = 0
 
-    action_cooldown_until = 0.0
+    print()
+    print("Camera started.")
+    print("Show a gesture.")
+    print("Press Q to quit.")
+    print()
 
-    confidence_threshold = 0.75
-
-
-    print(
-        "\n[VISION] Camera tracker started."
-    )
-
-    print(
-        "[VISION] Press Q to quit."
-    )
-
-
-    # ========================================================
-    # MAIN LOOP
-    # ========================================================
+    # --------------------------------------------------------
+    # LOOP
+    # --------------------------------------------------------
 
     while cap.isOpened():
 
         ret, frame = cap.read()
 
         if not ret:
-            break
-
+            continue
 
         now = time.time()
 
-
-        # Mirror camera.
-
-        frame = cv2.flip(
-            frame,
-            1
-        )
-
-
-        h, w, _ = frame.shape
-
-
-        # ====================================================
-        # MEDIAPIPE
-        # ====================================================
+        frame = cv2.flip(frame, 1)
 
         rgb = cv2.cvtColor(
             frame,
@@ -272,219 +180,168 @@ def run_vision_tracker():
 
         rgb.flags.writeable = False
 
-        results = detector.process(
-            rgb
-        )
+        results = detector.process(rgb)
 
         rgb.flags.writeable = True
 
+        # ----------------------------------------------------
+        # FEATURES
+        # ----------------------------------------------------
 
-        features = extract_features(
-            results
-        )
+        features = extract_features(results)
 
-        feature_buffer.append(
-            features
-        )
-
+        feature_buffer.append(features)
 
         draw_styled_landmarks(
             frame,
             results
         )
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # INFERENCE
-        # ====================================================
+        # ----------------------------------------------------
 
-        if (
-            len(feature_buffer)
-            == config.SEQUENCE_LENGTH
-        ):
+        if len(feature_buffer) == SEQUENCE_LENGTH:
 
-            sequence = np.array(
+            sequence = np.asarray(
                 feature_buffer,
                 dtype=np.float32
             )
 
-
-            seq_tensor = torch.tensor(
-                sequence,
-                dtype=torch.float32
+            tensor = torch.from_numpy(
+                sequence
             ).unsqueeze(0)
-
 
             with torch.no_grad():
 
-                logits = model(
-                    seq_tensor
-                )
+                logits = model(tensor)
 
                 probs = torch.softmax(
                     logits,
                     dim=1
-                ).squeeze(0).numpy()
-
+                )[0]
 
             top_idx = int(
-                np.argmax(probs)
+                torch.argmax(probs).item()
             )
 
-            conf = float(
-                probs[top_idx]
+            confidence = float(
+                probs[top_idx].item()
             )
 
+            candidate = gestures[top_idx]
 
-            # =================================================
-            # HIGH CONFIDENCE
-            # =================================================
+            # ------------------------------------------------
+            # DEBUG
+            # ------------------------------------------------
 
-            if conf >= confidence_threshold:
+            top_values, top_indices = torch.topk(
+                probs,
+                min(3, len(gestures))
+            )
 
-                candidate = gestures[
-                    top_idx
-                ]
+            top3 = [
+                f"{gestures[int(i)]}:{float(v)*100:.0f}%"
+                for v, i in zip(top_values, top_indices)
+            ]
 
-                recent_preds.append(
-                    candidate
-                )
+            # ------------------------------------------------
+            # CONFIDENCE FILTER
+            # ------------------------------------------------
 
+            if confidence >= CONFIDENCE_THRESHOLD:
 
-                # Require temporal consistency.
+                prediction_buffer.append(candidate)
 
-                candidate_count = (
-                    recent_preds.count(
-                        candidate
-                    )
-                )
+                counts = Counter(prediction_buffer)
 
+                stable_gesture, count = counts.most_common(1)[0]
 
-                if candidate_count >= 5:
+                if count >= STABLE_FRAMES:
 
-                    predicted_gesture = (
-                        candidate
-                    )
+                    displayed_gesture = stable_gesture
+                    displayed_confidence = confidence
 
-                    predicted_confidence = (
-                        conf
-                    )
+                    # ----------------------------------------
+                    # ACTION
+                    # ----------------------------------------
 
+                    if now >= cooldown_until:
 
-                    robot_action = (
-                        config.GESTURE_ACTION_MAP.get(
-                            predicted_gesture
-                        )
-                    )
+                        if stable_gesture != last_triggered_gesture:
 
-
-                    # =================================================
-                    # TRIGGER
-                    # =================================================
-
-                    if (
-                        robot_action
-                        and now >= action_cooldown_until
-                    ):
-
-                        # Don't trigger the exact same held
-                        # gesture repeatedly.
-
-                        if (
-                            predicted_gesture
-                            != last_triggered_gesture
-                        ):
-
-                            print(
-                                "[ACTION TRIGGER] "
-                                f"{predicted_gesture.upper()} "
-                                "-> "
-                                f"{robot_action}"
+                            action = config.GESTURE_ACTION_MAP.get(
+                                stable_gesture
                             )
 
+                            if action:
 
-                            sock.sendto(
-                                robot_action.encode(
-                                    "utf-8"
-                                ),
-                                (
-                                    UDP_IP,
-                                    UDP_PORT
+                                print(
+                                    f"\n[ACTION] "
+                                    f"{stable_gesture.upper()} "
+                                    f"({confidence*100:.1f}%)"
+                                    f" -> {action}"
                                 )
-                            )
 
+                                sock.sendto(
+                                    action.encode(),
+                                    (
+                                        UDP_IP,
+                                        UDP_PORT
+                                    )
+                                )
 
-                            active_robot_action = (
-                                robot_action
-                            )
+                                last_triggered_gesture = stable_gesture
 
+                                cooldown_until = (
+                                    now + COOLDOWN
+                                )
 
-                            action_cooldown_until = (
-                                now + 1.5
-                            )
-
-
-                            last_triggered_gesture = (
-                                predicted_gesture
-                            )
-
-
-                            recent_preds.clear()
-
+                                prediction_buffer.clear()
 
             else:
 
-                predicted_confidence = conf
+                displayed_confidence = confidence
 
-                recent_preds.append(
-                    "..."
-                )
+        # ----------------------------------------------------
+        # RESET HELD GESTURE
+        # ----------------------------------------------------
 
+        # Once another prediction appears, allow the previous
+        # gesture to trigger again later.
 
-        # ====================================================
-        # ALLOW NEW GESTURE
-        # ====================================================
+        if prediction_buffer:
 
-        # After cooldown and enough non-matching frames,
-        # the same gesture can be triggered again.
+            current_votes = Counter(
+                prediction_buffer
+            )
 
-        if now > action_cooldown_until:
-
-            active_robot_action = "READY"
-
+            current_gesture = (
+                current_votes.most_common(1)[0][0]
+            )
 
             if (
-                len(recent_preds) >= 3
-                and predicted_gesture not in recent_preds
+                last_triggered_gesture is not None
+                and current_gesture != last_triggered_gesture
             ):
 
                 last_triggered_gesture = None
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # HUD
-        # ====================================================
+        # ----------------------------------------------------
+
+        h, w, _ = frame.shape
 
         overlay = frame.copy()
-
 
         cv2.rectangle(
             overlay,
             (0, 0),
-            (w, 80),
+            (w, 105),
             (20, 20, 25),
             -1
         )
-
-
-        cv2.rectangle(
-            overlay,
-            (0, h - 45),
-            (w, h),
-            (20, 20, 25),
-            -1
-        )
-
 
         cv2.addWeighted(
             overlay,
@@ -495,75 +352,44 @@ def run_vision_tracker():
             frame
         )
 
-
         cv2.putText(
             frame,
-            (
-                f"SIGN: "
-                f"{predicted_gesture.upper()} "
-                f"({predicted_confidence * 100:.0f}%)"
-            ),
+            f"SIGN: {displayed_gesture.upper()}",
             (20, 35),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             (0, 255, 128),
-            2,
-            cv2.LINE_AA
+            2
         )
-
 
         cv2.putText(
             frame,
-            (
-                f"ROBOT: "
-                f"{active_robot_action.upper()}"
-            ),
+            f"CONF: {displayed_confidence*100:.1f}%",
             (20, 65),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 200, 255),
-            2,
-            cv2.LINE_AA
+            0.65,
+            (0, 220, 255),
+            2
         )
-
 
         cv2.putText(
             frame,
-            "ISL Gesture Camera | Q = Exit",
-            (20, h - 16),
+            "Q = EXIT",
+            (20, 92),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (180, 180, 180),
-            1,
-            cv2.LINE_AA
+            1
         )
-
 
         cv2.imshow(
             "SignVLA - ISL Gesture Feed",
             frame
         )
 
+        key = cv2.waitKey(1) & 0xFF
 
-        # ====================================================
-        # KEYBOARD
-        # ====================================================
-
-        key = (
-            cv2.waitKey(1)
-            & 0xFF
-        )
-
-
-        if key in (
-            27,
-            ord("q")
-        ):
-
-            print(
-                "\n[VISION] Q pressed."
-            )
-
+        if key in (ord("q"), 27):
 
             sock.sendto(
                 b"QUIT",
@@ -573,32 +399,16 @@ def run_vision_tracker():
                 )
             )
 
-
             break
 
-
-    # ========================================================
-    # CLEANUP
-    # ========================================================
-
     cap.release()
-
     cv2.destroyAllWindows()
-
     detector.close()
-
     sock.close()
 
+    print("\n[VISION] Tracker exited.")
 
-    print(
-        "\n[VISION] Camera tracker exited."
-    )
-
-
-# ============================================================
-# ENTRY
-# ============================================================
 
 if __name__ == "__main__":
-
     run_vision_tracker()
+    

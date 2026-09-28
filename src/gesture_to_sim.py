@@ -1,3 +1,7 @@
+cd "/Users/admin/Desktop/ISL Detector"
+source .venv/bin/activate
+
+cat > src/gesture_to_sim.py <<'PY'
 """
 SignVLA — 14-Class ISL Gesture -> RoArm-M2 Pro MuJoCo
 
@@ -803,3 +807,4 @@ def run_bridge():
 if __name__ == "__main__":
 
     run_bridge()
+PY

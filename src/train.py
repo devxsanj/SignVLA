@@ -49,8 +49,21 @@ def train(epochs=30, batch_size=16, lr=1e-3, hidden_dim=128):
 
     data = np.load(str(dataset_path))
 
-    X = data["X"].astype(np.float32)
-    y = data["y"].astype(np.int64)
+    X = np.concatenate(
+        [
+            data["X_train"],
+            data["X_test"]
+        ],
+        axis=0
+    ).astype(np.float32)
+
+    y = np.concatenate(
+        [
+            data["y_train"],
+            data["y_test"]
+        ],
+        axis=0
+    ).astype(np.int64)
 
     with open(label_map_path, "r") as f:
         meta = json.load(f)
