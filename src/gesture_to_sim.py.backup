@@ -1,0 +1,834 @@
+"""
+SignVLA
+14-Class ISL Gesture -> RoArm-M2 Pro MuJoCo Controller
+
+Pipeline:
+
+MediaPipe
+    ↓
+30-frame landmark sequence
+    ↓
+trained Bi-GRU model
+    ↓
+14 ISL gestures
+    ↓
+gesture action map
+    ↓
+RoArm-M2 Pro simulation
+"""
+
+import os
+import sys
+import time
+import math
+import socket
+import subprocess
+from pathlib import Path
+
+import numpy as np
+import mujoco
+import mujoco.viewer
+
+
+# ============================================================
+# PROJECT / VENV
+# ============================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+VENV_PY = PROJECT_ROOT / ".venv" / "bin" / "python"
+
+if not VENV_PY.exists():
+    VENV_PY = PROJECT_ROOT / "venv" / "bin" / "python"
+
+
+if VENV_PY.exists() and sys.prefix == sys.base_prefix:
+    os.execv(
+        str(VENV_PY),
+        [str(VENV_PY)] + sys.argv
+    )
+
+
+# ============================================================
+# IMPORT CONFIG
+# ============================================================
+
+sys.path.append(str(PROJECT_ROOT))
+
+import config
+
+
+# ============================================================
+# UDP
+# ============================================================
+
+UDP_IP = "127.0.0.1"
+UDP_PORT = 9876
+
+
+# ============================================================
+# ROARM-M2 PRO
+# ============================================================
+
+XML_PATH = config.ROARM_MODEL_XML
+
+if not XML_PATH.exists():
+    print("[ERROR] RoArm model not found:")
+    print(XML_PATH)
+    raise SystemExit(1)
+
+
+# ============================================================
+# LOAD MUJOCO
+# ============================================================
+
+model = mujoco.MjModel.from_xml_path(
+    str(XML_PATH)
+)
+
+data = mujoco.MjData(model)
+
+
+print()
+print("=" * 65)
+print("        SignVLA — 14-Class ISL RoArm Controller")
+print("=" * 65)
+print()
+print("Model:", XML_PATH)
+print("Joints:", model.njnt)
+print("Actuators:", model.nu)
+print()
+
+
+for i in range(model.nu):
+    print(
+        f"Actuator {i}: "
+        f"{model.actuator(i).name} "
+        f"range={model.actuator_ctrlrange[i]}"
+    )
+
+
+print()
+
+
+# ============================================================
+# VERIFY EXPECTED 4-DOF MODEL
+# ============================================================
+
+if model.nu != 4:
+
+    print(
+        "[ERROR] Expected 4 RoArm actuators "
+        f"but found {model.nu}."
+    )
+
+    raise SystemExit(1)
+
+
+# ============================================================
+# POSES
+# ============================================================
+
+HOME_POSE = np.array(
+    [0.00, 0.00, 0.00, 0.00],
+    dtype=np.float64
+)
+
+
+# Existing task poses from your working setup.
+
+PICK_POSE = np.array(
+    [0.00, -1.15, 1.65, 0.85],
+    dtype=np.float64
+)
+
+
+PLACE_POSE = np.array(
+    [0.75, -0.95, 1.35, 1.15],
+    dtype=np.float64
+)
+
+
+# ============================================================
+# SAFE CLAMP
+# ============================================================
+
+def clamp_pose(pose):
+
+    pose = np.asarray(
+        pose,
+        dtype=np.float64
+    ).copy()
+
+    for i in range(4):
+
+        pose[i] = np.clip(
+            pose[i],
+            model.actuator_ctrlrange[i][0],
+            model.actuator_ctrlrange[i][1]
+        )
+
+    return pose
+
+
+HOME_POSE = clamp_pose(HOME_POSE)
+PICK_POSE = clamp_pose(PICK_POSE)
+PLACE_POSE = clamp_pose(PLACE_POSE)
+
+
+# ============================================================
+# TRAJECTORIES
+# ============================================================
+
+ACTION_TRAJECTORIES = {
+
+    # --------------------------------------------------------
+    # HELLO
+    # --------------------------------------------------------
+
+    "wave": [
+
+        (
+            np.array(
+                [0.00, -0.50, 1.20, 0.00]
+            ),
+            0.60
+        ),
+
+        (
+            np.array(
+                [0.35, -0.50, 1.40, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            np.array(
+                [-0.35, -0.50, 1.00, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            np.array(
+                [0.35, -0.50, 1.40, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            np.array(
+                [-0.35, -0.50, 1.00, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            HOME_POSE,
+            0.60
+        )
+    ],
+
+
+    # --------------------------------------------------------
+    # YES
+    # --------------------------------------------------------
+
+    "nod_head": [
+
+        (
+            np.array(
+                [0.00, -0.30, 0.60, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            HOME_POSE,
+            0.30
+        ),
+
+        (
+            np.array(
+                [0.00, -0.30, 0.60, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            HOME_POSE,
+            0.40
+        )
+    ],
+
+
+    # --------------------------------------------------------
+    # NO
+    # --------------------------------------------------------
+
+    "shake_head": [
+
+        (
+            np.array(
+                [0.40, 0.00, 0.00, 0.00]
+            ),
+            0.25
+        ),
+
+        (
+            np.array(
+                [-0.40, 0.00, 0.00, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            np.array(
+                [0.40, 0.00, 0.00, 0.00]
+            ),
+            0.30
+        ),
+
+        (
+            HOME_POSE,
+            0.35
+        )
+    ],
+
+
+    # --------------------------------------------------------
+    # HOME
+    # --------------------------------------------------------
+
+    "home": [
+
+        (
+            HOME_POSE,
+            0.80
+        )
+    ],
+
+
+    # --------------------------------------------------------
+    # PICK
+    # --------------------------------------------------------
+
+    "pick_object": [
+
+        (
+            np.array(
+                [0.00, -0.70, 1.40, 0.00]
+            ),
+            0.70
+        ),
+
+        (
+            np.array(
+                [0.00, -0.70, 1.40, 0.50]
+            ),
+            0.40
+        ),
+
+        (
+            np.array(
+                [0.00, -0.20, 0.80, 0.50]
+            ),
+            0.60
+        )
+    ],
+
+
+    # --------------------------------------------------------
+    # PLACE
+    # --------------------------------------------------------
+
+    "place_object": [
+
+        (
+            np.array(
+                [0.65, -0.20, 0.80, 0.50]
+            ),
+            0.60
+        ),
+
+        (
+            np.array(
+                [0.65, -0.40, 0.65, 0.50]
+            ),
+            0.50
+        ),
+
+        (
+            np.array(
+                [0.65, -0.40, 0.65, 0.00]
+            ),
+            0.40
+        ),
+
+        (
+            np.array(
+                [0.65, -0.20, 0.50, 0.00]
+            ),
+            0.40
+        ),
+
+        (
+            HOME_POSE,
+            0.60
+        )
+    ],
+
+
+    # ========================================================
+    # DIRECTIONAL COMMANDS
+    # ========================================================
+
+    "move_left": [
+
+        (
+            np.array(
+                [-0.60, 0.00, 0.00, 0.00]
+            ),
+            0.50
+        )
+    ],
+
+
+    "move_right": [
+
+        (
+            np.array(
+                [0.60, 0.00, 0.00, 0.00]
+            ),
+            0.50
+        )
+    ],
+
+
+    "move_up": [
+
+        (
+            np.array(
+                [0.00, -0.70, 0.00, 0.00]
+            ),
+            0.50
+        )
+    ],
+
+
+    "move_down": [
+
+        (
+            np.array(
+                [0.00, 0.50, 0.00, 0.00]
+            ),
+            0.50
+        )
+    ],
+
+
+    "move_front": [
+
+        (
+            np.array(
+                [0.00, -0.35, 1.10, 0.00]
+            ),
+            0.60
+        )
+    ],
+
+
+    "move_back": [
+
+        (
+            np.array(
+                [0.00, 0.20, 0.20, 0.00]
+            ),
+            0.60
+        )
+    ],
+
+
+    # ========================================================
+    # GRIPPER
+    # ========================================================
+
+    "open_gripper": [
+
+        (
+            np.array(
+                [0.00, -0.30, 0.80, 0.00]
+            ),
+            0.40
+        )
+    ],
+
+
+    "close_gripper": [
+
+        (
+            np.array(
+                [0.00, -0.30, 0.80, 1.00]
+            ),
+            0.40
+        )
+    ]
+}
+
+
+# ============================================================
+# TRAJECTORY PLAYER
+# ============================================================
+
+class TrajectoryPlayer:
+
+    def __init__(self):
+
+        self.current_ctrl = HOME_POSE.copy()
+
+        self.waypoints = []
+
+        self.index = 0
+
+        self.start_pose = HOME_POSE.copy()
+
+        self.start_time = 0.0
+
+        self.active = False
+
+        self.action = "IDLE"
+
+
+    def play(self, action):
+
+        if action not in ACTION_TRAJECTORIES:
+
+            print(
+                "[WARNING] No trajectory for:",
+                action
+            )
+
+            return
+
+
+        self.waypoints = [
+
+            (
+                clamp_pose(target),
+                duration
+            )
+
+            for target, duration
+            in ACTION_TRAJECTORIES[action]
+        ]
+
+
+        self.index = 0
+
+        self.start_pose = (
+            self.current_ctrl.copy()
+        )
+
+        self.start_time = time.time()
+
+        self.active = True
+
+        self.action = action
+
+        print(
+            f"\n[ROBOT] "
+            f"{action.upper()}"
+        )
+
+
+    def update(self):
+
+        if not self.active:
+
+            return self.current_ctrl
+
+
+        target, duration = (
+            self.waypoints[self.index]
+        )
+
+
+        elapsed = (
+            time.time()
+            - self.start_time
+        )
+
+
+        alpha = min(
+            elapsed / max(duration, 0.001),
+            1.0
+        )
+
+
+        # Cosine interpolation.
+
+        smooth = (
+            0.5
+            * (
+                1.0
+                - math.cos(
+                    math.pi * alpha
+                )
+            )
+        )
+
+
+        self.current_ctrl = (
+            (1.0 - smooth)
+            * self.start_pose
+            +
+            smooth
+            * target
+        )
+
+
+        if alpha >= 1.0:
+
+            self.index += 1
+
+
+            if self.index < len(
+                self.waypoints
+            ):
+
+                self.start_pose = (
+                    self.current_ctrl.copy()
+                )
+
+                self.start_time = (
+                    time.time()
+                )
+
+            else:
+
+                self.active = False
+
+                self.action = "IDLE"
+
+
+        return self.current_ctrl
+
+
+# ============================================================
+# UDP BRIDGE
+# ============================================================
+
+def run():
+
+    sock = socket.socket(
+        socket.AF_INET,
+        socket.SOCK_DGRAM
+    )
+
+    sock.bind(
+        (
+            UDP_IP,
+            UDP_PORT
+        )
+    )
+
+    sock.setblocking(False)
+
+
+    # --------------------------------------------------------
+    # Start trained-model vision process
+    # --------------------------------------------------------
+
+    tracker = (
+        PROJECT_ROOT
+        / "src"
+        / "vision_tracker.py"
+    )
+
+
+    print(
+        "[LAUNCH] Starting "
+        "14-class MediaPipe + GRU tracker..."
+    )
+
+
+    tracker_proc = subprocess.Popen(
+        [
+            str(VENV_PY),
+            str(tracker)
+        ]
+    )
+
+
+    # --------------------------------------------------------
+    # Robot
+    # --------------------------------------------------------
+
+    player = TrajectoryPlayer()
+
+    data.ctrl[:] = HOME_POSE
+
+
+    print()
+    print("=" * 65)
+    print("  14-CLASS ISL → RoArm-M2 Pro")
+    print("=" * 65)
+    print()
+
+
+    for gesture in config.GESTURES:
+
+        action = (
+            config.GESTURE_ACTION_MAP
+            .get(gesture)
+        )
+
+        print(
+            f"{gesture:<8} -> "
+            f"{action}"
+        )
+
+
+    print()
+    print(
+        "Camera tracker uses:"
+    )
+    print(
+        "MediaPipe → 30×126 → GRU"
+    )
+    print()
+
+
+    try:
+
+        with mujoco.viewer.launch_passive(
+            model,
+            data
+        ) as viewer:
+
+            while viewer.is_running():
+
+                # ------------------------------------------------
+                # Tracker status
+                # ------------------------------------------------
+
+                if (
+                    tracker_proc.poll()
+                    is not None
+                ):
+
+                    print(
+                        "\n[INFO] "
+                        "Vision tracker stopped."
+                    )
+
+                    break
+
+
+                # ------------------------------------------------
+                # Receive gesture action
+                # ------------------------------------------------
+
+                try:
+
+                    packet, _ = (
+                        sock.recvfrom(1024)
+                    )
+
+                    message = (
+                        packet
+                        .decode(
+                            "utf-8"
+                        )
+                        .strip()
+                    )
+
+
+                    if message == "QUIT":
+
+                        break
+
+
+                    if (
+                        message
+                        in ACTION_TRAJECTORIES
+                    ):
+
+                        if not player.active:
+
+                            player.play(
+                                message
+                            )
+
+
+                except BlockingIOError:
+
+                    pass
+
+
+                # ------------------------------------------------
+                # Update robot
+                # ------------------------------------------------
+
+                ctrl = player.update()
+
+                data.ctrl[:] = ctrl
+
+
+                # ------------------------------------------------
+                # Physics
+                # ------------------------------------------------
+
+                for _ in range(4):
+
+                    mujoco.mj_step(
+                        model,
+                        data
+                    )
+
+
+                viewer.sync()
+
+                time.sleep(
+                    0.005
+                )
+
+
+    finally:
+
+        print(
+            "\n[SHUTDOWN] "
+            "Stopping SignVLA..."
+        )
+
+
+        sock.close()
+
+
+        if tracker_proc.poll() is None:
+
+            tracker_proc.terminate()
+
+            try:
+
+                tracker_proc.wait(
+                    timeout=2
+                )
+
+            except subprocess.TimeoutExpired:
+
+                tracker_proc.kill()
+
+
+        print(
+            "[DONE]"
+        )
+
+
+# ============================================================
+# ENTRY
+# ============================================================
+
+if __name__ == "__main__":
+
+    run()
