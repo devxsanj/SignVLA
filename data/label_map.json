@@ -1,36 +1,4 @@
 {
-  "label_to_idx": {
-    "back": 0,
-    "close": 1,
-    "down": 2,
-    "front": 3,
-    "hello": 4,
-    "home": 5,
-    "left": 6,
-    "no": 7,
-    "open": 8,
-    "pick": 9,
-    "place": 10,
-    "right": 11,
-    "up": 12,
-    "yes": 13
-  },
-  "idx_to_label": {
-    "0": "back",
-    "1": "close",
-    "2": "down",
-    "3": "front",
-    "4": "hello",
-    "5": "home",
-    "6": "left",
-    "7": "no",
-    "8": "open",
-    "9": "pick",
-    "10": "place",
-    "11": "right",
-    "12": "up",
-    "13": "yes"
-  },
   "gestures": [
     "back",
     "close",
@@ -46,5 +14,21 @@
     "right",
     "up",
     "yes"
-  ]
+  ],
+  "label_to_idx": {
+    "back": 0,
+    "close": 1,
+    "down": 2,
+    "front": 3,
+    "hello": 4,
+    "home": 5,
+    "left": 6,
+    "no": 7,
+    "open": 8,
+    "pick": 9,
+    "place": 10,
+    "right": 11,
+    "up": 12,
+    "yes": 13
+  }
 }

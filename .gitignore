@@ -3,3 +3,12 @@ __pycache__/
 *.pyc
 .DS_Store
 *.log
+MUJOCO_LOG.TXT
+.pytest_cache/
+# large / regenerable / third-party data
+data/raw_videos/
+data/isl/
+data/_legacy_landmarks_backup/
+data/dataset.npz
+models/*.pth
+runs/

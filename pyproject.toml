@@ -1,0 +1,11 @@
+[project]
+name = "signvla"
+version = "0.2.0"
+requires-python = ">=3.10,<3.13"
+description = "Language-agnostic sign-to-action interface for robot arms"
+
+[tool.setuptools.packages.find]
+include = ["signvla*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
