@@ -50,5 +50,7 @@ Record new signs: `python -m scripts.record --gestures pick --samples 40`, then 
 7. Direct gesture→action table replaced by the semantic layer; the simulator only receives concept names.
 
 ## Honest current numbers (`reports/evaluation.md`)
-Held-out later recordings: **78%** top-1 (random split: 90% — that gap is leakage). Weak: `no` 17%, `open` 38%, `pick/yes/hello` 67%.
-Single signer, single setup: no generalization claim is possible yet. See `docs/EVALUATION.md`.
+15 classes incl. `rest` (idle class, never commands the robot; record more with `scripts.record_rest`).
+Held-out later recordings: **78.8%** top-1, rest recall 78%, 13% of test windows pass the gates with a wrong label.
+Weak: `no` 17%, `open` 25%, `hello` 67%. Random-split accuracy is higher (leakage). Single signer, single setup:
+no generalization claim is possible yet. See `docs/EVALUATION.md`.

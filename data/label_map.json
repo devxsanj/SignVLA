@@ -11,6 +11,7 @@
     "open",
     "pick",
     "place",
+    "rest",
     "right",
     "up",
     "yes"
@@ -27,8 +28,9 @@
     "open": 8,
     "pick": 9,
     "place": 10,
-    "right": 11,
-    "up": 12,
-    "yes": 13
+    "rest": 11,
+    "right": 12,
+    "up": 13,
+    "yes": 14
   }
 }

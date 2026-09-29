@@ -17,7 +17,9 @@ ROARM_XML = ROOT / "assets" / "roarm_m2_pro" / "roarm_m2_pro.xml"
 GESTURES = [
     "back", "close", "down", "front", "hello", "home", "left",
     "no", "open", "pick", "place", "right", "up", "yes",
+    "rest",  # idle / hands resting / in transition: recognized but NEVER commands the robot
 ]
+REST_LABEL = "rest"
 SIGN_LANGUAGE = "isl"
 
 # ---- Sequence / feature shape ----

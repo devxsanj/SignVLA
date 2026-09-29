@@ -52,7 +52,7 @@ def test_block_split_holds_out_latest_per_class():
 
 
 def test_lexicons_cover_every_gesture_and_primitive():
-    assert set(LEXICONS["isl"]) == set(config.GESTURES)
+    assert set(LEXICONS["isl"]) == set(config.GESTURES) - {config.REST_LABEL}
     assert set(CONCEPT_TO_PRIMITIVE) == set(Concept)
     assert resolve("isl", "left") is Concept.MOVE_LEFT and resolve("asl", "left") is None
 

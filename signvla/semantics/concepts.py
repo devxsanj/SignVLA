@@ -50,7 +50,7 @@ CONCEPT_TO_PRIMITIVE = {
 
 
 def resolve(language, label):
-    """Sign label -> Concept, or None if the sign is not in that language's lexicon."""
+    """Sign label -> Concept, or None if not in the lexicon (e.g. the 'rest' class)."""
     return LEXICONS.get(language, {}).get(label)
 
 

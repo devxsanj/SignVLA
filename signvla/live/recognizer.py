@@ -46,7 +46,9 @@ class Recognizer:
         order = np.argsort(probs)[::-1]
         conf = float(probs[order[0]])
         margin = conf - float(probs[order[1]])
-        if hand_fraction < self.min_hand_fraction:
+        if self.gestures[order[0]] == config.REST_LABEL:
+            reason = "rest"
+        elif hand_fraction < self.min_hand_fraction:
             reason = "no_hand"
         elif conf < self.conf_threshold:
             reason = "low_confidence"
