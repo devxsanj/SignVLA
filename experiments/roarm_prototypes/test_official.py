@@ -2,7 +2,7 @@ import time
 import mujoco
 import mujoco.viewer
 
-XML = "roarm_official/roarm_m2_pro.xml"
+XML = "assets/roarm_m2_pro/roarm_m2_pro.xml"
 
 model = mujoco.MjModel.from_xml_path(XML)
 data = mujoco.MjData(model)

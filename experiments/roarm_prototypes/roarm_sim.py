@@ -14,7 +14,7 @@ import mujoco.viewer
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-XML_PATH = PROJECT_ROOT / "roarm_official" / "roarm_m2_pro.xml"
+XML_PATH = PROJECT_ROOT / "assets" / "roarm_m2_pro" / "roarm_m2_pro.xml"
 
 
 # ============================================================

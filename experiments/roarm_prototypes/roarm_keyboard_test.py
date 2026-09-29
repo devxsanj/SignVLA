@@ -3,7 +3,7 @@ import threading
 import mujoco
 import mujoco.viewer
 
-XML_PATH = "roarm_official/roarm_m2_pro.xml"
+XML_PATH = "assets/roarm_m2_pro/roarm_m2_pro.xml"
 
 model = mujoco.MjModel.from_xml_path(XML_PATH)
 data = mujoco.MjData(model)

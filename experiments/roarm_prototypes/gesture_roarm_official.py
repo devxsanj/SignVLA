@@ -11,7 +11,7 @@ import mediapipe as mp
 # CONFIG
 # ============================================================
 
-MODEL_PATH = "roarm_official/roarm_m2_pro.xml"
+MODEL_PATH = "assets/roarm_m2_pro/roarm_m2_pro.xml"
 CAMERA_ID = 0
 
 MOVE_TIME = 1.5
