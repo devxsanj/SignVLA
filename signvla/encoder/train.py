@@ -36,7 +36,7 @@ def train(strategy="block", epochs=60, batch_size=16, lr=1e-3, hidden_dim=128,
     model = GestureGRU(len(gestures), hidden_dim=hidden_dim).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss()  # inverse-frequency class weighting was tried and made rest/false-command worse
     train_loader = _loader(d["X_train"], d["y_train"], batch_size, True)
 
     print(f"split={strategy}  train={len(d['y_train'])} val={len(d['y_val'])} test={len(d['y_test'])}")

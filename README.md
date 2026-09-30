@@ -51,6 +51,7 @@ Record new signs: `python -m scripts.record --gestures pick --samples 40`, then 
 
 ## Honest current numbers (`reports/evaluation.md`)
 15 classes incl. `rest` (idle class, never commands the robot; record more with `scripts.record_rest`).
-Held-out later recordings: **78.8%** top-1, rest recall 78%, 13% of test windows pass the gates with a wrong label.
-Weak: `no` 17%, `open` 25%, `hello` 67%. Random-split accuracy is higher (leakage). Single signer, single setup:
-no generalization claim is possible yet. See `docs/EVALUATION.md`.
+Held-out later recordings, 3 idle sessions: **63.0%** top-1, rest recall 51% (20/100 rest windows called `back`).
+It was 78.8% after 2 sessions; the held-out idle data got harder, so the runs are not directly comparable.
+Weak: `no` 17%, `open` 50%. Class-weighted loss was tried and was worse. Single signer, single setup.
+No VLA is implemented yet. Draft manuscript with all numbers and TODOs: `docs/PAPER_DRAFT.md`. See `docs/EVALUATION.md`.
